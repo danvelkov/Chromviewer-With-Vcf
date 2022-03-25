@@ -2,11 +2,22 @@
 # Tool that generates chromosome diagrams of human genomic variants listed in a VCF file.
 # https://lakshay-anand.github.io/chromoMap/docs.html
 
+# check if dependencies are installed
+if (!require("vcfR"))
+  install.packages("vcfR")
+if (!require("chromoMap"))
+  install.packages("chromoMap")
+if (!require("htmltools"))
+  install.packages("htmltools")
+if (!require("gtools"))
+  install.packages("gtools")
+
 library(vcfR)
 library(chromoMap)
 library(htmltools)
+library(gtools)
 
-#!/usr/bin/env Rscript
+# !/usr/bin/env Rscript
 args = commandArgs(trailingOnly = TRUE)
 input_file = args[1]
 output_file = args[2]
@@ -20,11 +31,11 @@ if (length(args) == 0) {
   args[2] = "result.html"
 }
 
-#load of vcf file
+# load of vcf file
 vcf <-
   read.vcfR(input_file)
 
-#extracting chromosome lengths by the contig tag in the vcf file
+# extracting chromosome lengths by the contig tag in the vcf file
 chrom_list <- queryMETA(vcf, element = "contig")
 text <- c()
 chrom_matrix <- matrix(, nrow = 1, ncol = 2)
@@ -37,11 +48,11 @@ for (chrom in chrom_list) {
     c(text, paste(c(chrom_name, "1", chrom_end), collapse = "\t"))
 }
 
-#exporting chromosome lengths to txt file
-write(text,
+# exporting chromosome lengths to txt file
+write(mixedsort(text),
       paste(dir_name, "/chromFile.txt", sep = ""))
 
-#extracting the annotation data containing id, chr, positions and adding link to existing reference SNPs
+# extracting the annotation data containing id, chr, positions and adding link to existing reference SNPs
 records <- (getFIX(vcf))
 colnames(records) <- NULL
 text <- c()
@@ -72,18 +83,18 @@ for (row_count in 1:nrow(records)) {
     ))
 }
 
-#exporting annotation data to txt file
+# exporting annotation data to txt file
 write(text,
       paste(dir_name, "/annoFile.txt", sep = ""))
 
-#generating chromosome visual graph
+# generating chromosome visual graph
 chrom_map <- chromoMap(
   paste(dir_name, "/chromFile.txt", sep = ""),
   paste(dir_name, "/annoFile.txt", sep = ""),
   hlinks = T
 )
 
-#exporting the graph to a html file
+# exporting the graph to a html file
 save_html(
   chrom_map,
   output_file,
