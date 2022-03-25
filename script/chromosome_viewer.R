@@ -2,7 +2,53 @@
 # Tool that generates chromosome diagrams of human genomic variants listed in a VCF file.
 # https://lakshay-anand.github.io/chromoMap/docs.html
 
-# check if dependencies are installed
+# check for option table package
+if (!require("optparse"))
+  install.packages("optparse")
+
+library(optparse)
+
+# !/usr/bin/env Rscript
+option_list = list(
+  make_option(
+    c("-f", "--filter"),
+    action = "store_true",
+    default = NULL,
+    help = "Show only variants with value “PASS” in FILTER field",
+    metavar = "character"
+  ),
+  make_option(
+    c("-i", "--input"),
+    type = "character",
+    default = NULL,
+    help = "Vcf file containing SNPs",
+    metavar = "<file>.vcf"
+  ),
+  make_option(
+    c("-o", "--output"),
+    type = "character",
+    default = "result.html",
+    help = "Output html file visualising chromosome regions",
+    metavar = "<file>.html"
+  )
+)
+
+opt_parser = OptionParser(option_list = option_list)
+opt = parse_args(opt_parser)
+
+# check if input file is included
+if (is.null(opt$input)) {
+  print_help(opt_parser)
+  stop("At least one argument must be supplied (input file).n", call. =
+         FALSE)
+}
+
+# defining files from command
+input_file = opt$input
+output_file = opt$output
+dir_name = normalizePath(dirname(output_file))
+
+# check if the other dependencies are installed
 if (!require("vcfR"))
   install.packages("vcfR")
 if (!require("chromoMap"))
@@ -16,20 +62,6 @@ library(vcfR)
 library(chromoMap)
 library(htmltools)
 library(gtools)
-
-# !/usr/bin/env Rscript
-args = commandArgs(trailingOnly = TRUE)
-input_file = args[1]
-output_file = args[2]
-dir_name = normalizePath(dirname(output_file))
-
-# check for argument input
-if (length(args) == 0) {
-  stop("At least one argument must be supplied (input file).n", call. = FALSE)
-} else if (length(args) == 1) {
-  # default output file
-  args[2] = "result.html"
-}
 
 # load of vcf file
 vcf <-
@@ -52,8 +84,13 @@ for (chrom in chrom_list) {
 write(mixedsort(text),
       paste(dir_name, "/chromFile.txt", sep = ""))
 
+# check for --filter option
+ifelse(is.null(opt$filter),
+       records <-
+         getFIX(vcf),
+       records <- getFIX(vcf)[getFIX(vcf)[, 7] == "PASS", ])
+
 # extracting the annotation data containing id, chr, positions and adding link to existing reference SNPs
-records <- (getFIX(vcf))
 colnames(records) <- NULL
 text <- c()
 for (row_count in 1:nrow(records)) {
