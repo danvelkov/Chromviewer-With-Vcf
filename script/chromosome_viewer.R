@@ -30,6 +30,13 @@ option_list = list(
     default = "result.html",
     help = "Output html file visualising chromosome regions",
     metavar = "<file>.html"
+  ),
+  make_option(
+    c("-r", "--reference"),
+    type = "character",
+    default = "hg19",
+    help = "If contig tags aren't provided you can choose chromosome lengths between hg19 and hg38 reference genomes",
+    metavar = "<hg19/hg38>"
   )
 )
 
@@ -57,27 +64,56 @@ if (!require("htmltools"))
   install.packages("htmltools")
 if (!require("gtools"))
   install.packages("gtools")
+if (!require("readr"))
+  install.packages("readr")
 
 library(vcfR)
 library(chromoMap)
 library(htmltools)
 library(gtools)
+library(readr)
 
 # load of vcf file
 vcf <-
   read.vcfR(input_file)
 
 # extracting chromosome lengths by the contig tag in the vcf file
+# https://www.ncbi.nlm.nih.gov/grc/human/data
 chrom_list <- queryMETA(vcf, element = "contig")
-text <- c()
 chrom_matrix <- matrix(, nrow = 1, ncol = 2)
-for (chrom in chrom_list) {
-  chrom_name <- substring(chrom[1], 11)
-  chrom_end <- substring(chrom[2], 8)
-  chrom_matrix <- rbind(chrom_matrix, c(chrom_name, chrom_end))
+
+if (length(chrom_list) == 0) {
+  ifelse(
+    opt$reference == "hg19",
+    file <-
+      read_lines(file = "data/hg19"),
+    file <-
+      read_lines(file = "data/GRCh38")
+  )
+  vcf_chroms <- unique(getCHROM(vcf))
   
-  text <-
-    c(text, paste(c(chrom_name, "1", chrom_end), collapse = "\t"))
+  text <- c()
+  for (chrom in vcf_chroms) {
+    for (line in file) {
+      if (grepl(chrom, line, fixed = TRUE)){
+        chrom_name <- substring(line, first = 0, last = 4)
+        chrom_end <- substring(line, 8)
+        chrom_matrix <- rbind(chrom_matrix, c(chrom_name, chrom_end))
+        text <-
+          c(text, paste(c(line), collapse = ""))
+      }
+    }
+  }
+} else {
+  text <- c()
+  for (chrom in chrom_list) {
+    chrom_name <- substring(chrom[1], 11)
+    chrom_end <- substring(chrom[2], 8)
+    chrom_matrix <- rbind(chrom_matrix, c(chrom_name, chrom_end))
+    
+    text <-
+      c(text, paste(c(chrom_name, "1", chrom_end), collapse = "\t"))
+  }
 }
 
 # exporting chromosome lengths to txt file
@@ -88,7 +124,7 @@ write(mixedsort(text),
 ifelse(is.null(opt$filter),
        records <-
          getFIX(vcf),
-       records <- getFIX(vcf)[getFIX(vcf)[, 7] == "PASS", ])
+       records <- getFIX(vcf)[getFIX(vcf)[, 7] == "PASS",])
 
 # extracting the annotation data containing id, chr, positions and adding link to existing reference SNPs
 colnames(records) <- NULL
@@ -97,6 +133,7 @@ for (row_count in 1:nrow(records)) {
   elem_name <- records[row_count, 3]
   chrom_name <- records[row_count, 1]
   elem_start <- records[row_count, 2]
+  
   ifelse(
     row_count < nrow(records) &&
       chrom_name == records[row_count + 1, 1],
