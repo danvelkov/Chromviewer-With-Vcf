@@ -73,9 +73,30 @@ library(htmltools)
 library(gtools)
 library(readr)
 
+print(input_file)
+
 # load of vcf file
 vcf <-
   read.vcfR(input_file)
+
+#check if theres a need to change chromosome notation (notation must be chr*)
+file_created <- FALSE
+if (!grepl("chr", unique(getCHROM(vcf))[1], fixed = TRUE)) {
+  file_created <- TRUE
+  changed_notation_file <-
+    system(
+      paste(
+        'awk \'{if($0 !~ /^#/) print "chr"$0; else print $0}\'',
+        input_file,
+        sep = " "
+      ),
+      intern = TRUE
+    )
+  file.create(paste(input_file, ".tmp", sep = ""))
+  write(changed_notation_file, paste(input_file, '.tmp', sep = ""))
+  input_file <- paste(input_file, '.tmp', sep = "")
+  vcf <- read.vcfR(input_file)
+}
 
 # extracting chromosome lengths by the contig tag in the vcf file
 # https://www.ncbi.nlm.nih.gov/grc/human/data
@@ -95,10 +116,11 @@ if (length(chrom_list) == 0) {
   text <- c()
   for (chrom in vcf_chroms) {
     for (line in file) {
-      if (grepl(chrom, line, fixed = TRUE)){
+      if (grepl(chrom, line, fixed = TRUE)) {
         chrom_name <- substring(line, first = 0, last = 4)
         chrom_end <- substring(line, 8)
-        chrom_matrix <- rbind(chrom_matrix, c(chrom_name, chrom_end))
+        chrom_matrix <-
+          rbind(chrom_matrix, c(chrom_name, chrom_end))
         text <-
           c(text, paste(c(line), collapse = ""))
       }
@@ -176,3 +198,7 @@ save_html(
   libdir = dir_name,
   lang = "en"
 )
+
+#if temp file is created we will delete it
+if (file_created)
+  file.remove(input_file)
