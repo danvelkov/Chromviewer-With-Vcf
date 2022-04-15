@@ -2,11 +2,46 @@
 # Tool that generates chromosome diagrams of human genomic variants listed in a VCF file.
 # https://lakshay-anand.github.io/chromoMap/docs.html
 
-# check for option table package
-if (!require("optparse"))
-  install.packages("optparse")
+#automatic install of packages if they are not installed already
+list.of.packages <- c(
+  "vcfR",
+  "chromoMap",
+  "htmltools",
+  "gtools",
+  "readr",
+  "optparse",
+  "foreach",
+  "doParallel",
+  "filelock"
+)
 
-library(optparse)
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+
+if(length(new.packages) > 0){
+  install.packages(new.packages, dep=TRUE)
+}
+
+#loading packages
+for(package.i in list.of.packages){
+  suppressPackageStartupMessages(
+    library(
+      package.i, 
+      character.only = TRUE
+    )
+  )
+}
+
+#get number of cores for parallel package
+n.cores <- parallel::detectCores() - 1
+
+#create the cluster
+my.cluster <- parallel::makeCluster(
+  n.cores, 
+  type = "PSOCK"
+)
+
+#register it to be used by %dopar%
+doParallel::registerDoParallel(cl = my.cluster)
 
 # !/usr/bin/env Rscript
 option_list = list(
@@ -55,54 +90,15 @@ input_file = opt$input
 output_file = opt$output
 dir_name = normalizePath(dirname(output_file))
 
-# check if the other dependencies are installed
-if (!require("vcfR"))
-  install.packages("vcfR")
-if (!require("chromoMap"))
-  install.packages("chromoMap")
-if (!require("htmltools"))
-  install.packages("htmltools")
-if (!require("gtools"))
-  install.packages("gtools")
-if (!require("readr"))
-  install.packages("readr")
-
-library(vcfR)
-library(chromoMap)
-library(htmltools)
-library(gtools)
-library(readr)
-
-print(input_file)
-
 # load of vcf file
 vcf <-
   read.vcfR(input_file)
 
-#check if theres a need to change chromosome notation (notation must be chr*)
-file_created <- FALSE
-if (!grepl("chr", unique(getCHROM(vcf))[1], fixed = TRUE)) {
-  file_created <- TRUE
-  changed_notation_file <-
-    system(
-      paste(
-        'awk \'{if($0 !~ /^#/) print "chr"$0; else print $0}\'',
-        input_file,
-        sep = " "
-      ),
-      intern = TRUE
-    )
-  file.create(paste(input_file, ".tmp", sep = ""))
-  write(changed_notation_file, paste(input_file, '.tmp', sep = ""))
-  input_file <- paste(input_file, '.tmp', sep = "")
-  vcf <- read.vcfR(input_file)
-}
-
 # extracting chromosome lengths by the contig tag in the vcf file
 # https://www.ncbi.nlm.nih.gov/grc/human/data
 chrom_list <- queryMETA(vcf, element = "contig")
-chrom_matrix <- matrix(, nrow = 1, ncol = 2)
 
+#check if contig is present
 if (length(chrom_list) == 0) {
   ifelse(
     opt$reference == "hg19",
@@ -119,8 +115,6 @@ if (length(chrom_list) == 0) {
       if (grepl(chrom, line, fixed = TRUE)) {
         chrom_name <- substring(line, first = 0, last = 4)
         chrom_end <- substring(line, 8)
-        chrom_matrix <-
-          rbind(chrom_matrix, c(chrom_name, chrom_end))
         text <-
           c(text, paste(c(line), collapse = ""))
       }
@@ -131,7 +125,6 @@ if (length(chrom_list) == 0) {
   for (chrom in chrom_list) {
     chrom_name <- substring(chrom[1], 11)
     chrom_end <- substring(chrom[2], 8)
-    chrom_matrix <- rbind(chrom_matrix, c(chrom_name, chrom_end))
     
     text <-
       c(text, paste(c(chrom_name, "1", chrom_end), collapse = "\t"))
@@ -139,8 +132,23 @@ if (length(chrom_list) == 0) {
 }
 
 # exporting chromosome lengths to txt file
-write(mixedsort(text),
+write(mixedsort(unique(text)),
       paste(dir_name, "/chromFile.txt", sep = ""))
+
+#check if theres a need to change chromosome notation (notation must be chr*)
+if (!grepl("chr", unique(getCHROM(vcf))[1], fixed = TRUE)) {
+  changed_notation_file <-
+    system(
+      paste(
+        'awk \'{gsub(/^chr/,""); print}\'',
+        paste(dir_name, "/chromFile.txt", sep = ""),
+        sep = " "
+      ),
+      intern = TRUE
+    )
+
+  write(changed_notation_file,  paste(dir_name, "/chromFile.txt", sep = ""))
+}
 
 # check for --filter option
 ifelse(is.null(opt$filter),
@@ -148,10 +156,19 @@ ifelse(is.null(opt$filter),
          getFIX(vcf),
        records <- getFIX(vcf)[getFIX(vcf)[, 7] == "PASS",])
 
-# extracting the annotation data containing id, chr, positions and adding link to existing reference SNPs
 colnames(records) <- NULL
-text <- c()
-for (row_count in 1:nrow(records)) {
+anno_file <-paste(dir_name, "/annoFile.txt", sep = "")
+#invisible(file.remove(anno_file))
+
+chrom_matrix <- matrix(, nrow = 1, ncol = 2)
+chrom_matrix <- read.table(paste(dir_name, "/chromFile.txt", sep = ""))
+chrom_matrix <- unique(chrom_matrix)
+chrom_matrix$V2 <- NULL
+
+# extracting the annotation data containing id, chr, positions and adding link to existing reference SNPs
+foreach (row_count=1:nrow(records), .packages='filelock') %dopar% {
+  line <- c()
+
   elem_name <- records[row_count, 3]
   chrom_name <- records[row_count, 1]
   elem_start <- records[row_count, 2]
@@ -164,6 +181,7 @@ for (row_count in 1:nrow(records)) {
     elem_end <-
       as.numeric(chrom_matrix[which(chrom_matrix == chrom_name, arr.ind = TRUE), 2][1]) - as.numeric(elem_start)
   )
+  
   ifelse(
     is.na(elem_name),
     data <-
@@ -172,16 +190,19 @@ for (row_count in 1:nrow(records)) {
       paste("https://www.ncbi.nlm.nih.gov/snp/", elem_name, sep = "")
   )
   
-  text <-
-    c(text, paste(
-      c(elem_name, chrom_name, elem_start, elem_end, data),
-      collapse = "\t"
-    ))
+  line <- paste(
+    c(elem_name, chrom_name, elem_start, elem_end, data),
+    collapse = "\t"
+  )
+  
+  lck <- lock("/tmp/anno_file.lock")
+  write(line,
+        anno_file, append=TRUE)
+  unlock(lck)
 }
 
-# exporting annotation data to txt file
-write(text,
-      paste(dir_name, "/annoFile.txt", sep = ""))
+#stop cluster
+parallel::stopCluster(cl = my.cluster)
 
 # generating chromosome visual graph
 chrom_map <- chromoMap(
@@ -198,7 +219,3 @@ save_html(
   libdir = dir_name,
   lang = "en"
 )
-
-#if temp file is created we will delete it
-if (file_created)
-  file.remove(input_file)
