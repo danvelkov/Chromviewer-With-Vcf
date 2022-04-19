@@ -2,6 +2,8 @@
 # Tool that generates chromosome diagrams of human genomic variants listed in a VCF file.
 # https://lakshay-anand.github.io/chromoMap/docs.html
 
+print(Sys.time())
+
 #automatic install of packages if they are not installed already
 list.of.packages <- c(
   "vcfR",
@@ -15,30 +17,25 @@ list.of.packages <- c(
   "filelock"
 )
 
-new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+new.packages <-
+  list.of.packages[!(list.of.packages %in% installed.packages()[, "Package"])]
 
-if(length(new.packages) > 0){
-  install.packages(new.packages, dep=TRUE)
+if (length(new.packages) > 0) {
+  install.packages(new.packages, dep = TRUE)
 }
 
 #loading packages
-for(package.i in list.of.packages){
-  suppressPackageStartupMessages(
-    library(
-      package.i, 
-      character.only = TRUE
-    )
-  )
+for (package.i in list.of.packages) {
+  suppressPackageStartupMessages(library(package.i,
+                                         character.only = TRUE))
 }
 
 #get number of cores for parallel package
 n.cores <- parallel::detectCores() - 1
 
 #create the cluster
-my.cluster <- parallel::makeCluster(
-  n.cores, 
-  type = "PSOCK"
-)
+my.cluster <- parallel::makeCluster(n.cores,
+                                    type = "PSOCK")
 
 #register it to be used by %dopar%
 doParallel::registerDoParallel(cl = my.cluster)
@@ -109,12 +106,14 @@ if (length(chrom_list) == 0) {
   )
   vcf_chroms <- unique(getCHROM(vcf))
   
+  if (!grepl("chr", unique(getCHROM(vcf))[1], fixed = TRUE)) {
+    file <- gsub(".*chr", "", file)
+  }
+  
   text <- c()
   for (chrom in vcf_chroms) {
     for (line in file) {
-      if (grepl(chrom, line, fixed = TRUE)) {
-        chrom_name <- substring(line, first = 0, last = 4)
-        chrom_end <- substring(line, 8)
+      if (chrom == sub("\\\t1.*", "", line)) {
         text <-
           c(text, paste(c(line), collapse = ""))
       }
@@ -135,40 +134,26 @@ if (length(chrom_list) == 0) {
 write(mixedsort(unique(text)),
       paste(dir_name, "/chromFile.txt", sep = ""))
 
-#check if theres a need to change chromosome notation (notation must be chr*)
-if (!grepl("chr", unique(getCHROM(vcf))[1], fixed = TRUE)) {
-  changed_notation_file <-
-    system(
-      paste(
-        'awk \'{gsub(/^chr/,""); print}\'',
-        paste(dir_name, "/chromFile.txt", sep = ""),
-        sep = " "
-      ),
-      intern = TRUE
-    )
-
-  write(changed_notation_file,  paste(dir_name, "/chromFile.txt", sep = ""))
-}
-
 # check for --filter option
 ifelse(is.null(opt$filter),
        records <-
-         getFIX(vcf),
-       records <- getFIX(vcf)[getFIX(vcf)[, 7] == "PASS",])
+         getFIX(vcf, getINFO = TRUE),
+       records <- getFIX(vcf, getINFO = TRUE)[getFIX(vcf)[, 7] == "PASS", ])
 
 colnames(records) <- NULL
-anno_file <-paste(dir_name, "/annoFile.txt", sep = "")
+anno_file <- paste(dir_name, "/annoFile.txt", sep = "")
 #invisible(file.remove(anno_file))
 
 chrom_matrix <- matrix(, nrow = 1, ncol = 2)
-chrom_matrix <- read.table(paste(dir_name, "/chromFile.txt", sep = ""))
+chrom_matrix <-
+  read.table(paste(dir_name, "/chromFile.txt", sep = ""))
 chrom_matrix <- unique(chrom_matrix)
 chrom_matrix$V2 <- NULL
 
 # extracting the annotation data containing id, chr, positions and adding link to existing reference SNPs
-foreach (row_count=1:nrow(records), .packages='filelock') %dopar% {
+foreach (row_count = 1:nrow(records), .packages = 'filelock') %dopar% {
   line <- c()
-
+  
   elem_name <- records[row_count, 3]
   chrom_name <- records[row_count, 1]
   elem_start <- records[row_count, 2]
@@ -190,14 +175,18 @@ foreach (row_count=1:nrow(records), .packages='filelock') %dopar% {
       paste("https://www.ncbi.nlm.nih.gov/snp/", elem_name, sep = "")
   )
   
-  line <- paste(
-    c(elem_name, chrom_name, elem_start, elem_end, data),
-    collapse = "\t"
+  ifelse(
+    grepl( "Pathogenic", records[row_count, 8], fixed = TRUE),
+    pathogenic <- "orange",
+    pathogenic <- "green"
   )
+  
+  line <- paste(c(elem_name, chrom_name, elem_start, elem_end, pathogenic, data),
+                collapse = "\t")
   
   lck <- lock("/tmp/anno_file.lock")
   write(line,
-        anno_file, append=TRUE)
+        anno_file, append = TRUE)
   unlock(lck)
 }
 
@@ -208,7 +197,10 @@ parallel::stopCluster(cl = my.cluster)
 chrom_map <- chromoMap(
   paste(dir_name, "/chromFile.txt", sep = ""),
   paste(dir_name, "/annoFile.txt", sep = ""),
-  hlinks = T
+  hlinks = T,
+  data_based_color_map = T,
+  data_type = "categorical",
+  data_colors = list(c("orange", "yellow"))
 )
 
 # exporting the graph to a html file
@@ -219,3 +211,5 @@ save_html(
   libdir = dir_name,
   lang = "en"
 )
+
+print(Sys.time())
