@@ -2,7 +2,7 @@
 # Tool that generates chromosome diagrams of human genomic variants listed in a VCF file.
 # https://lakshay-anand.github.io/chromoMap/docs.html
 
-print(Sys.time())
+#print(Sys.time())
 
 #automatic install of packages if they are not installed already
 list.of.packages <- c(
@@ -14,7 +14,8 @@ list.of.packages <- c(
   "optparse",
   "foreach",
   "doParallel",
-  "filelock"
+  "filelock",
+  "tools"
 )
 
 new.packages <-
@@ -66,9 +67,32 @@ option_list = list(
   make_option(
     c("-r", "--reference"),
     type = "character",
-    default = "hg19",
+    default = NULL,
     help = "If contig tags aren't provided you can choose chromosome lengths between hg19 and hg38 reference genomes",
     metavar = "<hg19/hg38>"
+  ),
+  make_option(
+    c("-c", "--chromosome"),
+    type = "character",
+    default = NULL,
+    help = "Filter by chromosomes, ex. <chr#:from-to,chr#:from-to,...>",
+    metavar = ""
+  ),
+  make_option(
+    c("-p", "--pathogen"),
+    type = "character",
+    action = "store_true",
+    default = FALSE,
+    help = "Filter by pathogenicity",
+    metavar = ""
+  ),
+  make_option(
+    c("-g", "--clnsig"),
+    type = "character",
+    default = NULL,
+    help = "Filter by clinical significance, USE NUMBERS ONLY, ex. Uncertain - 0, Not provided - 1, Benign - 2, Likely benign - 3, Likely pathogenic - 4, Pathogenic - 5,
+Drug-response related - 6, Histocompatibility-related - 7, Other - 255",
+    metavar = ""
   )
 )
 
@@ -87,6 +111,122 @@ input_file = opt$input
 output_file = opt$output
 dir_name = normalizePath(dirname(output_file))
 
+#TODO filtered files should be deleted after completion
+if (!is.null(opt$chromosome)) {
+  if (file_ext(input_file) != "gz") {
+    system(paste(
+      c("bcftools view ", input_file, " -Oz -o ", input_file, ".gz"),
+      collapse = ""
+    ))
+    system(paste(c("bcftools index ", input_file, ".gz"), collapse = ""))
+  }
+  
+  file_name <- (tools::file_path_sans_ext(input_file))
+  
+  system(paste(
+    c(
+      "bcftools filter ",
+      input_file,
+      ".gz -r ",
+      opt$chromosome,
+      " > ",
+      file_name,
+      "_filtered.vcf"
+    ),
+    collapse = ""
+  ))
+  input_file <- paste(c(file_name, "_filtered.vcf"), collapse = "")
+}
+
+if (isTRUE(opt$pathogen)) {
+  file_name <- (tools::file_path_sans_ext(input_file))
+  system(paste(
+    c(
+      "bcftools view -i 'INFO/CLNSIG==\"Pathogenic\"' ",
+      input_file,
+      " > ",
+      file_name,
+      "_path.vcf"
+    ),
+    collapse = ""
+  ))
+  input_file <- paste(c(file_name, "_path.vcf"), collapse = "")
+}
+
+if (!is.null(opt$clnsig)) {
+  #output should be with different name and should be deleted afterwards
+  file_name <- (tools::file_path_sans_ext(input_file))
+  
+  clnsig_options <- c()
+  for (option in as.list(unlist(strsplit(opt$clnsig, ",")))) {
+    switch(
+      option,
+      "0" = {
+        clnsig_options <- paste(c(
+          clnsig_options,
+          "INFO/CLNSIG~\"Uncertain_significance\""
+        ),
+        collapse = " | ")
+      },
+      "1" = {
+        clnsig_options <-
+          paste(c(clnsig_options, "INFO/CLNSIG~\"Uncertain\""),
+                collapse = " | ")
+      },
+      "2" = {
+        clnsig_options <-
+          paste(c(clnsig_options, "INFO/CLNSIG~\"Benign\""), collapse = " | ")
+      },
+      "3" = {
+        clnsig_options <-
+          paste(c(clnsig_options, "INFO/CLNSIG~\"Likely_benign\""),
+                collapse = " | ")
+      },
+      "4" = {
+        clnsig_options <-
+          paste(c(clnsig_options, "INFO/CLNSIG~\"Likely_pathogenic\""),
+                collapse = " | ")
+      },
+      "5" = {
+        clnsig_options <-
+          paste(c(clnsig_options, "INFO/CLNSIG~\"Pathogenic\""),
+                collapse = " | ")
+      },
+      "6" = {
+        clnsig_options <-
+          paste(c(clnsig_options, "INFO/CLNSIG~\"Drug_response\""),
+                collapse = " | ")
+      },
+      "7" = {
+        clnsig_options <-
+          paste(c(clnsig_options, "INFO/CLNSIG~\"Histocompatibility\""),
+                collapse = " | ")
+      },
+      "255" = {
+        clnsig_options <-
+          paste(c(clnsig_options, "INFO/CLNSIG~\"Other\""),
+                collapse = " | ")
+      },
+      {
+        print('default')
+      }
+    )
+  }
+  
+  system(paste(
+    c(
+      "bcftools view -i '",
+      clnsig_options,
+      "' ",
+      input_file,
+      " > ",
+      file_name,
+      "_clnsig.vcf"
+    ),
+    collapse = ""
+  ))
+}
+
 # load of vcf file
 vcf <-
   read.vcfR(input_file)
@@ -96,7 +236,14 @@ vcf <-
 chrom_list <- queryMETA(vcf, element = "contig")
 
 #check if contig is present
-if (length(chrom_list) == 0) {
+#TODO add ignore of missing chromosomes even with contig
+if (length(chrom_list) == 0 ||
+    !grepl("length", chrom_list, fixed = TRUE)) {
+  if (is.null(opt$reference))
+    stop("Contig is missing in header. You must specify reference lengths with -r",
+         call. =
+           FALSE)
+  
   ifelse(
     opt$reference == "hg19",
     file <-
@@ -135,10 +282,13 @@ write(mixedsort(unique(text)),
       paste(dir_name, "/chromFile.txt", sep = ""))
 
 # check for --filter option
-ifelse(is.null(opt$filter),
-       records <-
-         getFIX(vcf, getINFO = TRUE),
-       records <- getFIX(vcf, getINFO = TRUE)[getFIX(vcf)[, 7] == "PASS", ])
+ifelse(
+  is.null(opt$filter),
+  records <-
+    getFIX(vcf, getINFO = TRUE),
+  records <-
+    getFIX(vcf, getINFO = TRUE)[getFIX(vcf)[, 7] == "PASS",]
+)
 
 colnames(records) <- NULL
 anno_file <- paste(dir_name, "/annoFile.txt", sep = "")
@@ -175,32 +325,40 @@ foreach (row_count = 1:nrow(records), .packages = 'filelock') %dopar% {
       paste("https://www.ncbi.nlm.nih.gov/snp/", elem_name, sep = "")
   )
   
+  #declaring pathogenicity for chromoMap to categorize
   ifelse(
-    grepl( "Pathogenic", records[row_count, 8], fixed = TRUE),
-    pathogenic <- "orange",
-    pathogenic <- "green"
+    grepl("Pathogenic", records[row_count, 8], fixed = TRUE),
+    pathogenic <- "pathogenic",
+    pathogenic <- "non-pathogenic"
   )
   
-  line <- paste(c(elem_name, chrom_name, elem_start, elem_end, pathogenic, data),
-                collapse = "\t")
+  line <-
+    paste(c(elem_name, chrom_name, elem_start, elem_end, pathogenic, data),
+          collapse = "\t")
   
-  lck <- lock("/tmp/anno_file.lock")
+  invisible(lck <- lock("/tmp/anno_file.lock"))
   write(line,
         anno_file, append = TRUE)
-  unlock(lck)
+  invisible(unlock(lck))
 }
 
 #stop cluster
 parallel::stopCluster(cl = my.cluster)
 
+#TODO when there is only one category it's problematic
 # generating chromosome visual graph
 chrom_map <- chromoMap(
   paste(dir_name, "/chromFile.txt", sep = ""),
   paste(dir_name, "/annoFile.txt", sep = ""),
   hlinks = T,
+  n_win.factor = 3,
+  win.summary.display = T,
   data_based_color_map = T,
   data_type = "categorical",
-  data_colors = list(c("orange", "yellow"))
+  legend = T,
+  lg_x = 500,
+  lg_y = 100
+  #data_colors = list(c("orange", "yellow"))
 )
 
 # exporting the graph to a html file
@@ -212,4 +370,4 @@ save_html(
   lang = "en"
 )
 
-print(Sys.time())
+#print(Sys.time())
