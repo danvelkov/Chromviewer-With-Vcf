@@ -2,8 +2,6 @@
 # Tool that generates chromosome diagrams of human genomic variants listed in a VCF file.
 # https://lakshay-anand.github.io/chromoMap/docs.html
 
-#print(Sys.time())
-
 #automatic install of packages if they are not installed already
 list.of.packages <- c(
   "vcfR",
@@ -106,12 +104,20 @@ if (is.null(opt$input)) {
          FALSE)
 }
 
+# check for filtering options issues
+if (!is.null(opt$clnsig) && isTRUE(opt$pathogen))
+  stop("You can't filter by pathogenicity and by other clinical significance at once",
+       call. =
+         FALSE)
+
 # defining files from command
 input_file = opt$input
 output_file = opt$output
 dir_name = normalizePath(dirname(output_file))
 
 #TODO filtered files should be deleted after completion
+# filtering options
+# filtering by chromosomes and lengths
 if (!is.null(opt$chromosome)) {
   if (file_ext(input_file) != "gz") {
     system(paste(
@@ -138,6 +144,7 @@ if (!is.null(opt$chromosome)) {
   input_file <- paste(c(file_name, "_filtered.vcf"), collapse = "")
 }
 
+#filtering by pathogenicity
 if (isTRUE(opt$pathogen)) {
   file_name <- (tools::file_path_sans_ext(input_file))
   system(paste(
@@ -153,8 +160,8 @@ if (isTRUE(opt$pathogen)) {
   input_file <- paste(c(file_name, "_path.vcf"), collapse = "")
 }
 
+#filtering by clinical significance
 if (!is.null(opt$clnsig)) {
-  #output should be with different name and should be deleted afterwards
   file_name <- (tools::file_path_sans_ext(input_file))
   
   clnsig_options <- c()
@@ -225,6 +232,8 @@ if (!is.null(opt$clnsig)) {
     ),
     collapse = ""
   ))
+  
+  input_file <- paste(c(file_name, "_clnsig.vcf"), collapse = "")
 }
 
 # load of vcf file
@@ -287,12 +296,15 @@ ifelse(
   records <-
     getFIX(vcf, getINFO = TRUE),
   records <-
-    getFIX(vcf, getINFO = TRUE)[getFIX(vcf)[, 7] == "PASS",]
+    getFIX(vcf, getINFO = TRUE)[getFIX(vcf)[, 7] == "PASS", ]
 )
 
 colnames(records) <- NULL
+
 anno_file <- paste(dir_name, "/annoFile.txt", sep = "")
-#invisible(file.remove(anno_file))
+if (file.exists(anno_file)) {
+  file.remove(anno_file)
+}
 
 chrom_matrix <- matrix(, nrow = 1, ncol = 2)
 chrom_matrix <-
@@ -345,21 +357,27 @@ foreach (row_count = 1:nrow(records), .packages = 'filelock') %dopar% {
 #stop cluster
 parallel::stopCluster(cl = my.cluster)
 
-#TODO when there is only one category it's problematic
-# generating chromosome visual graph
-chrom_map <- chromoMap(
-  paste(dir_name, "/chromFile.txt", sep = ""),
-  paste(dir_name, "/annoFile.txt", sep = ""),
-  hlinks = T,
-  n_win.factor = 3,
-  win.summary.display = T,
-  data_based_color_map = T,
-  data_type = "categorical",
-  legend = T,
-  lg_x = 500,
-  lg_y = 100
-  #data_colors = list(c("orange", "yellow"))
-)
+if (!all(sapply(
+  c("pathogenic", "non-pathogenic"),
+  grepl,
+  readChar(anno_file, file.info(anno_file)$size)
+)))
+  chrom_map <- chromoMap(
+    title = basename(input_file),
+    paste(dir_name, "/chromFile.txt", sep = ""),
+    paste(dir_name, "/annoFile.txt", sep = ""),
+    hlinks = T,
+  )
+else
+  chrom_map <- chromoMap(
+    title = basename(input_file),
+    paste(dir_name, "/chromFile.txt", sep = ""),
+    paste(dir_name, "/annoFile.txt", sep = ""),
+    hlinks = T,
+    data_based_color_map = TRUE,
+    data_type = c("categorical"),
+    legend = TRUE,
+  )
 
 # exporting the graph to a html file
 save_html(
@@ -369,5 +387,3 @@ save_html(
   libdir = dir_name,
   lang = "en"
 )
-
-#print(Sys.time())
