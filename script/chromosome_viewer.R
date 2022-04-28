@@ -144,6 +144,7 @@ if (!is.null(opt$chromosome)) {
   input_file <- paste(c(file_name, "_filtered.vcf"), collapse = "")
 }
 
+#TODO what if the vcf is not annotated?
 #filtering by pathogenicity
 if (isTRUE(opt$pathogen)) {
   file_name <- (tools::file_path_sans_ext(input_file))
@@ -243,9 +244,10 @@ vcf <-
 # extracting chromosome lengths by the contig tag in the vcf file
 # https://www.ncbi.nlm.nih.gov/grc/human/data
 chrom_list <- queryMETA(vcf, element = "contig")
+variant_chroms <- unique(getCHROM(vcf))
 
+#TODO optimization
 #check if contig is present
-#TODO add ignore of missing chromosomes even with contig
 if (length(chrom_list) == 0 ||
     !grepl("length", chrom_list, fixed = TRUE)) {
   if (is.null(opt$reference))
@@ -281,7 +283,8 @@ if (length(chrom_list) == 0 ||
     chrom_name <- substring(chrom[1], 11)
     chrom_end <- substring(chrom[2], 8)
     
-    text <-
+    if (chrom_name %in% variant_chroms)
+      text <-
       c(text, paste(c(chrom_name, "1", chrom_end), collapse = "\t"))
   }
 }
@@ -329,19 +332,24 @@ foreach (row_count = 1:nrow(records), .packages = 'filelock') %dopar% {
       as.numeric(chrom_matrix[which(chrom_matrix == chrom_name, arr.ind = TRUE), 2][1]) - as.numeric(elem_start)
   )
   
-  ifelse(
-    is.na(elem_name),
-    data <-
-      NA,
-    data <-
-      paste("https://www.ncbi.nlm.nih.gov/snp/", elem_name, sep = "")
-  )
+  ifelse(is.na(elem_name),
+         data <-
+           NA,
+         data <- ifelse(
+           !grepl("rs", elem_name, fixed = TRUE),
+           paste(
+             "https://www.ncbi.nlm.nih.gov/clinvar/variation/",
+             elem_name,
+             sep = ""
+           ),
+           paste("https://www.ncbi.nlm.nih.gov/snp/", elem_name, sep = "")
+         ))
   
   #declaring pathogenicity for chromoMap to categorize
   ifelse(
     grepl("Pathogenic", records[row_count, 8], fixed = TRUE),
     pathogenic <- "pathogenic",
-    pathogenic <- "non-pathogenic"
+    pathogenic <- "nonpathogen"
   )
   
   line <-
@@ -358,7 +366,7 @@ foreach (row_count = 1:nrow(records), .packages = 'filelock') %dopar% {
 parallel::stopCluster(cl = my.cluster)
 
 if (!all(sapply(
-  c("pathogenic", "non-pathogenic"),
+  c("nonpathogen", "pathogenic"),
   grepl,
   readChar(anno_file, file.info(anno_file)$size)
 )))
@@ -366,9 +374,8 @@ if (!all(sapply(
     title = basename(input_file),
     paste(dir_name, "/chromFile.txt", sep = ""),
     paste(dir_name, "/annoFile.txt", sep = ""),
-    hlinks = T,
-  )
-else
+    hlinks = T
+  ) else
   chrom_map <- chromoMap(
     title = basename(input_file),
     paste(dir_name, "/chromFile.txt", sep = ""),
@@ -376,7 +383,7 @@ else
     hlinks = T,
     data_based_color_map = TRUE,
     data_type = c("categorical"),
-    legend = TRUE,
+    legend = TRUE
   )
 
 # exporting the graph to a html file
