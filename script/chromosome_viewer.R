@@ -104,18 +104,31 @@ if (is.null(opt$input)) {
          FALSE)
 }
 
+# defining files from command
+input_file = opt$input
+output_file = opt$output
+dir_name = normalizePath(dirname(output_file))
+
+#check if file is annotated so that called clnsig filters (-p / -g) can be used
+if ((!is.null(opt$clnsig) ||
+     isTRUE(opt$pathogen)) &&
+    !any(grepl("CLNSIG", readLines(input_file, n = 1000), fixed = TRUE)))
+  stop(
+    "You can't filter by pathogenicity nor by other clinical significance because the file is not annotated with such data",
+    call. =
+      FALSE
+  )
+
 # check for filtering options issues
 if (!is.null(opt$clnsig) && isTRUE(opt$pathogen))
   stop("You can't filter by pathogenicity and by other clinical significance at once",
        call. =
          FALSE)
 
-# defining files from command
-input_file = opt$input
-output_file = opt$output
-dir_name = normalizePath(dirname(output_file))
+#create output directory if it doesn't exist
+if (!dir.exists(dir_name))
+  dir.create(dir_name)
 
-#TODO filtered files should be deleted after completion
 # filtering options
 # filtering by chromosomes and lengths
 if (!is.null(opt$chromosome)) {
@@ -144,7 +157,6 @@ if (!is.null(opt$chromosome)) {
   input_file <- paste(c(file_name, "_filtered.vcf"), collapse = "")
 }
 
-#TODO what if the vcf is not annotated?
 #filtering by pathogenicity
 if (isTRUE(opt$pathogen)) {
   file_name <- (tools::file_path_sans_ext(input_file))
@@ -246,7 +258,6 @@ vcf <-
 chrom_list <- queryMETA(vcf, element = "contig")
 variant_chroms <- unique(getCHROM(vcf))
 
-#TODO optimization
 #check if contig is present
 if (length(chrom_list) == 0 ||
     !grepl("length", chrom_list, fixed = TRUE)) {
@@ -299,7 +310,7 @@ ifelse(
   records <-
     getFIX(vcf, getINFO = TRUE),
   records <-
-    getFIX(vcf, getINFO = TRUE)[getFIX(vcf)[, 7] == "PASS", ]
+    getFIX(vcf, getINFO = TRUE)[getFIX(vcf)[, 7] == "PASS",]
 )
 
 colnames(records) <- NULL
@@ -365,6 +376,7 @@ foreach (row_count = 1:nrow(records), .packages = 'filelock') %dopar% {
 #stop cluster
 parallel::stopCluster(cl = my.cluster)
 
+#generate chromosome graphs
 if (!all(sapply(
   c("nonpathogen", "pathogenic"),
   grepl,
