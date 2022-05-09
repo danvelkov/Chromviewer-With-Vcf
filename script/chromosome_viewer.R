@@ -2,7 +2,7 @@
 # Tool that generates chromosome diagrams of human genomic variants listed in a VCF file.
 # https://lakshay-anand.github.io/chromoMap/docs.html
 
-#automatic install of packages if they are not installed already
+# automatic install of packages if they are not installed already
 list.of.packages <- c(
   "vcfR",
   "chromoMap",
@@ -23,7 +23,7 @@ if (length(new.packages) > 0) {
   install.packages(new.packages, dep = TRUE)
 }
 
-#loading packages
+# loading packages
 for (package.i in list.of.packages) {
   suppressPackageStartupMessages(library(package.i,
                                          character.only = TRUE))
@@ -32,14 +32,15 @@ for (package.i in list.of.packages) {
 #get number of cores for parallel package
 n.cores <- parallel::detectCores() - 1
 
-#create the cluster
+# create the cluster
 my.cluster <- parallel::makeCluster(n.cores,
                                     type = "PSOCK")
 
-#register it to be used by %dopar%
+# register it to be used by %dopar%
 doParallel::registerDoParallel(cl = my.cluster)
 
 # !/usr/bin/env Rscript
+# optparse options definitions
 option_list = list(
   make_option(
     c("-f", "--filter"),
@@ -104,12 +105,12 @@ if (is.null(opt$input)) {
          FALSE)
 }
 
-# defining files from command
+# defining file path variables from command call
 input_file = opt$input
 output_file = opt$output
 dir_name = normalizePath(dirname(output_file))
 
-#check if file is annotated so that called clnsig filters (-p / -g) can be used
+# check if file is annotated so that called clnsig filters (-p / -g) can be used
 if ((!is.null(opt$clnsig) ||
      isTRUE(opt$pathogen)) &&
     !any(grepl("CLNSIG", readLines(input_file, n = 1000), fixed = TRUE)))
@@ -125,13 +126,15 @@ if (!is.null(opt$clnsig) && isTRUE(opt$pathogen))
        call. =
          FALSE)
 
-#create output directory if it doesn't exist
+# create output directory if it doesn't exist
 if (!dir.exists(dir_name))
   dir.create(dir_name)
 
-# filtering options
-# filtering by chromosomes and lengths
+#TODO filtered files should be deleted after completion
+# filtering by chromosomes and lengths with bcftools view
+# if file is not compressed it will be generated a compressed one then used for bcftools
 if (!is.null(opt$chromosome)) {
+  # check if file is compressed (.gz)
   if (file_ext(input_file) != "gz") {
     system(paste(
       c("bcftools view ", input_file, " -Oz -o ", input_file, ".gz"),
@@ -142,6 +145,7 @@ if (!is.null(opt$chromosome)) {
   
   file_name <- (tools::file_path_sans_ext(input_file))
   
+  # calling filtering bcftools command
   system(paste(
     c(
       "bcftools filter ",
@@ -157,7 +161,8 @@ if (!is.null(opt$chromosome)) {
   input_file <- paste(c(file_name, "_filtered.vcf"), collapse = "")
 }
 
-#filtering by pathogenicity
+# filtering by pathogenicity
+# key word for search is CLNSIG='Pathogenic' in INFO field for variants
 if (isTRUE(opt$pathogen)) {
   file_name <- (tools::file_path_sans_ext(input_file))
   system(paste(
@@ -173,10 +178,13 @@ if (isTRUE(opt$pathogen)) {
   input_file <- paste(c(file_name, "_path.vcf"), collapse = "")
 }
 
-#filtering by clinical significance
+# filtering by clinical significance
+# filtering by multiple criteria specified from -g option
+# a command with combination of all clnsig types will be generated to be called with bcftools
 if (!is.null(opt$clnsig)) {
   file_name <- (tools::file_path_sans_ext(input_file))
   
+  # generating clnsig options for bcftools view command
   clnsig_options <- c()
   for (option in as.list(unlist(strsplit(opt$clnsig, ",")))) {
     switch(
@@ -258,14 +266,19 @@ vcf <-
 chrom_list <- queryMETA(vcf, element = "contig")
 variant_chroms <- unique(getCHROM(vcf))
 
-#check if contig is present
+# generating chrom length file
+# check if contig with lengths is present
 if (length(chrom_list) == 0 ||
     !grepl("length", chrom_list, fixed = TRUE)) {
+  # contig is not present
+  
+  # check if -r option is present
   if (is.null(opt$reference))
     stop("Contig is missing in header. You must specify reference lengths with -r",
          call. =
            FALSE)
   
+  # choosing which reference file should be used based on -r option
   ifelse(
     opt$reference == "hg19",
     file <-
@@ -289,6 +302,7 @@ if (length(chrom_list) == 0 ||
     }
   }
 } else {
+  # contig is present
   text <- c()
   for (chrom in chrom_list) {
     chrom_name <- substring(chrom[1], 11)
@@ -304,7 +318,7 @@ if (length(chrom_list) == 0 ||
 write(mixedsort(unique(text)),
       paste(dir_name, "/chromFile.txt", sep = ""))
 
-# check for --filter option
+# check for --filter option which filters FILTER field with value PASS for variants
 ifelse(
   is.null(opt$filter),
   records <-
@@ -315,18 +329,22 @@ ifelse(
 
 colnames(records) <- NULL
 
+# check if anno_file already exist
 anno_file <- paste(dir_name, "/annoFile.txt", sep = "")
 if (file.exists(anno_file)) {
   file.remove(anno_file)
 }
 
+# defining variable containing lengths of chromosomes and their names
+# it is to be used to calculate the end coordinates of the last variant for every chromosome
 chrom_matrix <- matrix(, nrow = 1, ncol = 2)
 chrom_matrix <-
   read.table(paste(dir_name, "/chromFile.txt", sep = ""))
 chrom_matrix <- unique(chrom_matrix)
 chrom_matrix$V2 <- NULL
 
-# extracting the annotation data containing id, chr, positions and adding link to existing reference SNPs
+# extracting the annotation data containing id, chr, positions 
+# and adding link to existing reference SNPs or clinical significance Clinvar reference
 foreach (row_count = 1:nrow(records), .packages = 'filelock') %dopar% {
   line <- c()
   
@@ -334,6 +352,7 @@ foreach (row_count = 1:nrow(records), .packages = 'filelock') %dopar% {
   chrom_name <- records[row_count, 1]
   elem_start <- records[row_count, 2]
   
+  # calculating end coordinates for every variant
   ifelse(
     row_count < nrow(records) &&
       chrom_name == records[row_count + 1, 1],
@@ -343,6 +362,7 @@ foreach (row_count = 1:nrow(records), .packages = 'filelock') %dopar% {
       as.numeric(chrom_matrix[which(chrom_matrix == chrom_name, arr.ind = TRUE), 2][1]) - as.numeric(elem_start)
   )
   
+  # generating hyperlink to ncbi database
   ifelse(is.na(elem_name),
          data <-
            NA,
@@ -367,6 +387,7 @@ foreach (row_count = 1:nrow(records), .packages = 'filelock') %dopar% {
     paste(c(elem_name, chrom_name, elem_start, elem_end, pathogenic, data),
           collapse = "\t")
   
+  # writing to file with simple lock for concurrency
   invisible(lck <- lock("/tmp/anno_file.lock"))
   write(line,
         anno_file, append = TRUE)
@@ -376,7 +397,8 @@ foreach (row_count = 1:nrow(records), .packages = 'filelock') %dopar% {
 #stop cluster
 parallel::stopCluster(cl = my.cluster)
 
-#generate chromosome graphs
+# generate chromosome graphs
+# where if there's only one type of variants, the graph will be non-categorical
 if (!all(sapply(
   c("nonpathogen", "pathogenic"),
   grepl,
