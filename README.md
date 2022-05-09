@@ -28,3 +28,46 @@ Options include
 
 
 There are sample vcf files in the data folder for test purposes
+
+---
+
+### Examples
+- Visualise chromosome map with filter for chromosomes 1, 4 and X from the input file *test.vcf* in */data*
+
+**Important**: when filtering by chromosmes ***-c*** flag should be called with the chromosome notation from the input file (ex. 1,2,3.. if #CHROM is 1,2,3 or chr1.. if #CHROM is chr1.. etc.)
+
+`./chromosome_viewer.sh -i ./data/test.vcf -o ../output/result.html -c chr1,chr4,chrX`
+
+Output:
+
+[![non-anno-output.png](https://i.postimg.cc/4NvRrSnn/non-anno-output.png)](https://postimg.cc/3dwqG9XH)
+
+- Visualise chromosome map from the input file *annotated_data.vcf* in */data*
+
+*Note*: When contig tags are missing ***-r*** flag should be used to specify reference genome lengths
+
+`./chromosome_viewer.sh -i ./data/annotated_data.vcf -o ../output/result.html -r hg38`
+
+Output:
+
+[![anno-output.png](https://i.postimg.cc/28k0Sc21/anno-output.png)](https://postimg.cc/8sYRyH8G)
+
+- Visualise chromosome map from input file *annotated_data.vcf* in */data* only with variants which clinical significance (CLNSIG) is Bening and Likely Bening
+
+*Note*: You can't use ***-g*** and ***-p*** flags simultaneously
+ 
+`./chromosome_viewer.sh -i ./data/annotated_data.vcf -o ../output/result.html -r hg38 -g 2,3`
+
+Output:
+
+[![clnsig-output.png](https://i.postimg.cc/FF8X7CPs/clnsig-output.png)](https://postimg.cc/JtN2FxV9)
+
+When you hover over a painted region it will show variant count and display their Id's
+Depending on wheter it's annotated for clinical significance or not it will lead to NIH's ClinVar database or NIH's dbSNP database
+
+In the output directory except exported diagram files there will be files with chromosome lengths and variant info required for <a href="https://lakshay-anand.github.io/chromoMap/docs.html" target="_blank">chromoMap</a>. They can be used for additional data presentation and analisys
+
+---
+
+If any issues or questions arise while using this script please feel free to mention them in Issues tab
+
