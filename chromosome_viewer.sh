@@ -1,4 +1,7 @@
 #!/bin/bash
+#start directory variable
+STDIR=`pwd`
+
 #check if bcftools is installed
 if ! command -v bcftools &> /dev/null
 then
@@ -33,8 +36,11 @@ then
   sudo apt -y install build-essential;
 fi
 
-#call to install Rscript
+#call to check Rscript
 Rscript --version
+
+#changing back to start directory
+cd $STDIR
 
 #call Rscript with input flags
 Rscript ./script/chromosome_viewer.R "$@"
