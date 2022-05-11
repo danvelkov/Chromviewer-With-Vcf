@@ -2,6 +2,12 @@
 # Tool that generates chromosome diagrams of human genomic variants listed in a VCF file.
 # https://lakshay-anand.github.io/chromoMap/docs.html
 
+# create personal library
+dir.create(Sys.getenv("R_LIBS_USER"), recursive = TRUE)
+
+# add to the path
+.libPaths(Sys.getenv("R_LIBS_USER"))
+
 # automatic install of packages if they are not installed already
 list.of.packages <- c(
   "vcfR",
