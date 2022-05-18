@@ -228,7 +228,7 @@ if (!is.null(opt$clnsig)) {
       },
       "6" = {
         clnsig_options <-
-          paste(c(clnsig_options, "INFO/CLNSIG~\"Drug_response\""),
+          paste(c(clnsig_options, "INFO/CLNSIG~\"drug_response\""),
                 collapse = " | ")
       },
       "7" = {

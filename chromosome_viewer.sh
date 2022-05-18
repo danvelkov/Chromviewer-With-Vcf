@@ -4,7 +4,7 @@
 export SUDO_ASKPASS=/usr/bin/ssh-askpass
 
 #start directory variable
-STDIR=`pwd`
+STDIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
 #check if bcftools is installed
 if ! command -v bcftools &> /dev/null
