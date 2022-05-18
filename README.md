@@ -5,7 +5,6 @@ Requires [R version 4.1.3 (2022-03-10)](https://www.r-project.org/) or newer ver
 and [bcftools-1.15.1](https://samtools.github.io/bcftools/) or newer version
 
 ## How to run
-<<<<<<< HEAD
 **Important**: Firstly you have to run to install default askpass, incase your Linux distro doesn't provide the ssh default one
 
 `sudo apt-get install ssh-askpass-gnome ssh-askpass`
@@ -13,9 +12,6 @@ and [bcftools-1.15.1](https://samtools.github.io/bcftools/) or newer version
 To run script, just run the bash file
 
 `./chromosome_viewer.sh -i <input.VCF> [-o <output.HTML>] [options]`
-=======
-`Rscript ./script/chromosome_viewer.R -i <input.VCF> [-o <output.HTML>] [options]`
->>>>>>> parent of 3e993b9... Updated README.md
 
 Options include
 
