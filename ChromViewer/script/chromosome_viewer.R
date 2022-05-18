@@ -3,8 +3,7 @@
 # https://lakshay-anand.github.io/chromoMap/docs.html
 
 # create personal library
-if (!dir.exists(Sys.getenv("R_LIBS_USER")))
-  dir.create(Sys.getenv("R_LIBS_USER"), recursive = TRUE)
+dir.create(Sys.getenv("R_LIBS_USER"), recursive = TRUE)
 
 # add to the path
 .libPaths(Sys.getenv("R_LIBS_USER"))
@@ -50,6 +49,13 @@ doParallel::registerDoParallel(cl = my.cluster)
 # optparse options definitions
 option_list = list(
   make_option(
+    c("-f", "--filter"),
+    action = "store_true",
+    default = NULL,
+    help = "Show only variants with value “PASS” in FILTER field",
+    metavar = "character"
+  ),
+  make_option(
     c("-i", "--input"),
     type = "character",
     default = NULL,
@@ -62,13 +68,6 @@ option_list = list(
     default = "result.html",
     help = "Output html file visualising chromosome regions",
     metavar = "<file>.html"
-  ),
-   make_option(
-    c("-f", "--filter"),
-    action = "store_true",
-    default = NULL,
-    help = "Show only variants with value “PASS” in FILTER field",
-    metavar = "character"
   ),
   make_option(
     c("-r", "--reference"),
@@ -137,6 +136,7 @@ if (!is.null(opt$clnsig) && isTRUE(opt$pathogen))
 if (!dir.exists(dir_name))
   dir.create(dir_name)
 
+#TODO filtered files should be deleted after completion
 # filtering by chromosomes and lengths with bcftools view
 # if file is not compressed it will be generated a compressed one then used for bcftools
 if (!is.null(opt$chromosome)) {
@@ -351,7 +351,7 @@ chrom_matrix$V2 <- NULL
 
 # extracting the annotation data containing id, chr, positions 
 # and adding link to existing reference SNPs or clinical significance Clinvar reference
-invisible(foreach (row_count = 1:nrow(records), .packages = 'filelock') %dopar% {
+foreach (row_count = 1:nrow(records), .packages = 'filelock') %dopar% {
   line <- c()
   
   elem_name <- records[row_count, 3]
@@ -394,11 +394,11 @@ invisible(foreach (row_count = 1:nrow(records), .packages = 'filelock') %dopar% 
           collapse = "\t")
   
   # writing to file with simple lock for concurrency
-  lck <- lock("/tmp/anno_file.lock")
+  invisible(lck <- lock("/tmp/anno_file.lock"))
   write(line,
         anno_file, append = TRUE)
-  unlock(lck)
-})
+  invisible(unlock(lck))
+}
 
 #stop cluster
 parallel::stopCluster(cl = my.cluster)
