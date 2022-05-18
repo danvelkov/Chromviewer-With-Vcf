@@ -9,7 +9,9 @@ and [bcftools-1.15.1](https://samtools.github.io/bcftools/) or newer version
 
 `sudo apt-get install ssh-askpass-gnome ssh-askpass`
 
-To run script, just run the bash file
+To run script, just run the bash file in ChromViewer directory
+
+`cd ChromViewer`
 
 `./chromosome_viewer.sh -i <input.VCF> [-o <output.HTML>] [options]`
 
@@ -76,4 +78,5 @@ In the output directory except exported diagram files there will be files with c
 ---
 
 If any issues or questions arise while using this script please feel free to mention them in Issues tab
+
 
