@@ -6,29 +6,6 @@ export SUDO_ASKPASS=/usr/bin/ssh-askpass
 #start directory variable
 STDIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
-#check if bcftools is installed
-if ! command -v bcftools &> /dev/null
-then
-  echo "Installing bcftools"
-  sudo -A apt-get -y update;
-  sudo -A apt-get -y install gcc;
-  sudo -A apt-get -y install make;
-  sudo -A apt-get -y install libbz2-dev;
-  sudo -A apt-get -y install zlib1g-dev;
-  sudo -A apt-get -y install libncurses5-dev;
-  sudo -A apt-get -y install libncursesw5-dev;
-  sudo -A apt-get -y install liblzma-dev;
-  cd ~
-  wget https://github.com/samtools/bcftools/releases/download/1.9/bcftools-1.9.tar.bz2
-  tar -vxjf bcftools-1.9.tar.bz2
-  cd bcftools-1.9
-  make
-  export PATH="$PATH:/usr/bin/bcftools-1.9"
-  source ~/.profile
-  
-  sudo -A apt -y install bcftools
-fi
-
 #check if r-base is installed
 if [ $(dpkg-query -W -f='${Status}' r-base 2>/dev/null | grep -c "ok installed") -eq 0 ];
 then

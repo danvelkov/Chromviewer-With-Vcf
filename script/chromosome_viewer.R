@@ -20,7 +20,10 @@ list.of.packages <- c(
   "foreach",
   "doParallel",
   "filelock",
-  "tools"
+  "tools",
+  "stringr",
+  "dplyr",
+  "rebus"
 )
 
 new.packages <-
@@ -63,7 +66,7 @@ option_list = list(
     help = "Output html file visualising chromosome regions",
     metavar = "<file>.html"
   ),
-   make_option(
+  make_option(
     c("-f", "--filter"),
     action = "store_true",
     default = NULL,
@@ -137,109 +140,110 @@ if (!is.null(opt$clnsig) && isTRUE(opt$pathogen))
 if (!dir.exists(dir_name))
   dir.create(dir_name)
 
+# load of vcf file
+vcf <-
+  read.vcfR(input_file)
+
+# defining variable for storing records
+records <- c()
+
 # filtering by chromosomes and lengths with bcftools view
 # if file is not compressed it will be generated a compressed one then used for bcftools
 if (!is.null(opt$chromosome)) {
-  # check if file is compressed (.gz)
-  if (file_ext(input_file) != "gz") {
-    system(paste(
-      c("bcftools view ", input_file, " -Oz -o ", input_file, ".gz"),
-      collapse = ""
-    ))
-    system(paste(c("bcftools index ", input_file, ".gz"), collapse = ""))
+  records <- getFIX(vcf, getINFO = TRUE)
+  
+  buff_record <- c()
+  
+  chrom_options <- unlist(strsplit(opt$chromosome, ",", fixed = T))
+  for (option in chrom_options) {
+    opt_split <- unlist(strsplit(option, ":", fixed = T))
+    
+    #extracting chrom number from option
+    chrom <- (opt_split[1])
+    
+    # extracting ranges from option
+    if (grepl("-", opt_split[2])) {
+      ranges <- unlist(strsplit(opt_split[2], "-", fixed = T))
+      
+      # generating regular expression for number range
+      rx <- number_range(ranges[1], ranges[2])
+      
+      # adding backslashesh so that R recognizes it
+      rx <- paste(c("\\b", rx, "\\b"), collapse = "")
+      
+      chrom_record <- records[records[, 1] == chrom,]
+      chrom_record <- chrom_record[grepl(rx, chrom_record[, 2]),]
+    }
+    else {
+      chrom_record <- records[records[, 1] == chrom,]
+    }
+
+    buff_record <- rbind(buff_record, chrom_record)
   }
   
-  file_name <- (tools::file_path_sans_ext(input_file))
-  
-  # calling filtering bcftools command
-  system(paste(
-    c(
-      "bcftools filter ",
-      input_file,
-      ".gz -r ",
-      opt$chromosome,
-      " > ",
-      file_name,
-      "_filtered.vcf"
-    ),
-    collapse = ""
-  ))
-  input_file <- paste(c(file_name, "_filtered.vcf"), collapse = "")
+  records <- buff_record
 }
 
 # filtering by pathogenicity
 # key word for search is CLNSIG='Pathogenic' in INFO field for variants
 if (isTRUE(opt$pathogen)) {
-  file_name <- (tools::file_path_sans_ext(input_file))
-  system(paste(
-    c(
-      "bcftools view -i 'INFO/CLNSIG==\"Pathogenic\"' ",
-      input_file,
-      " > ",
-      file_name,
-      "_path.vcf"
-    ),
-    collapse = ""
-  ))
-  input_file <- paste(c(file_name, "_path.vcf"), collapse = "")
+  records <- getFIX(vcf, getINFO = TRUE)
+  records <-
+    records[grepl("Pathogenic", records[, ncol(records)]),]
 }
 
 # filtering by clinical significance
 # filtering by multiple criteria specified from -g option
-# a command with combination of all clnsig types will be generated to be called with bcftools
 if (!is.null(opt$clnsig)) {
-  file_name <- (tools::file_path_sans_ext(input_file))
+  records <- getFIX(vcf, getINFO = TRUE)
   
-  # generating clnsig options for bcftools view command
   clnsig_options <- c()
   for (option in as.list(unlist(strsplit(opt$clnsig, ",")))) {
     switch(
       option,
       "0" = {
-        clnsig_options <- paste(c(
-          clnsig_options,
-          "INFO/CLNSIG~\"Uncertain_significance\""
-        ),
-        collapse = " | ")
+        clnsig_options <- paste(c(clnsig_options,
+                                  "Uncertain_significance"),
+                                collapse = "|")
       },
       "1" = {
         clnsig_options <-
-          paste(c(clnsig_options, "INFO/CLNSIG~\"Uncertain\""),
-                collapse = " | ")
+          paste(c(clnsig_options, "Uncertain"),
+                collapse = "|")
       },
       "2" = {
         clnsig_options <-
-          paste(c(clnsig_options, "INFO/CLNSIG~\"Benign\""), collapse = " | ")
+          paste(c(clnsig_options, "Benign"), collapse = "|")
       },
       "3" = {
         clnsig_options <-
-          paste(c(clnsig_options, "INFO/CLNSIG~\"Likely_benign\""),
-                collapse = " | ")
+          paste(c(clnsig_options, "Likely_benign"),
+                collapse = "|")
       },
       "4" = {
         clnsig_options <-
-          paste(c(clnsig_options, "INFO/CLNSIG~\"Likely_pathogenic\""),
-                collapse = " | ")
+          paste(c(clnsig_options, "Likely_pathogenic"),
+                collapse = "|")
       },
       "5" = {
         clnsig_options <-
-          paste(c(clnsig_options, "INFO/CLNSIG~\"Pathogenic\""),
-                collapse = " | ")
+          paste(c(clnsig_options, "Pathogenic"),
+                collapse = "|")
       },
       "6" = {
         clnsig_options <-
-          paste(c(clnsig_options, "INFO/CLNSIG~\"drug_response\""),
-                collapse = " | ")
+          paste(c(clnsig_options, "drug_response"),
+                collapse = "|")
       },
       "7" = {
         clnsig_options <-
-          paste(c(clnsig_options, "INFO/CLNSIG~\"Histocompatibility\""),
-                collapse = " | ")
+          paste(c(clnsig_options, "Histocompatibility"),
+                collapse = "|")
       },
       "255" = {
         clnsig_options <-
-          paste(c(clnsig_options, "INFO/CLNSIG~\"Other\""),
-                collapse = " | ")
+          paste(c(clnsig_options, "Other"),
+                collapse = "|")
       },
       {
         print('default')
@@ -247,25 +251,21 @@ if (!is.null(opt$clnsig)) {
     )
   }
   
-  system(paste(
-    c(
-      "bcftools view -i '",
-      clnsig_options,
-      "' ",
-      input_file,
-      " > ",
-      file_name,
-      "_clnsig.vcf"
-    ),
-    collapse = ""
-  ))
-  
-  input_file <- paste(c(file_name, "_clnsig.vcf"), collapse = "")
+  records <-
+    records[grepl(clnsig_options, records[, ncol(records)]),]
 }
 
-# load of vcf file
-vcf <-
-  read.vcfR(input_file)
+# if the records data frame isn't populated yet we call to populate it
+if (is.null(dim(records))) {
+  records <- getFIX(vcf, getINFO = TRUE)
+}
+
+# check for --filter option which filters FILTER field with value PASS for variants
+if (!is.null(opt$filter)) {
+  records <- records[records[, 7] == "PASS", ]
+}
+
+colnames(records) <- NULL
 
 # extracting chromosome lengths by the contig tag in the vcf file
 # https://www.ncbi.nlm.nih.gov/grc/human/data
@@ -324,17 +324,6 @@ if (length(chrom_list) == 0 ||
 write(mixedsort(unique(text)),
       paste(dir_name, "/chromFile.txt", sep = ""))
 
-# check for --filter option which filters FILTER field with value PASS for variants
-ifelse(
-  is.null(opt$filter),
-  records <-
-    getFIX(vcf, getINFO = TRUE),
-  records <-
-    getFIX(vcf, getINFO = TRUE)[getFIX(vcf)[, 7] == "PASS",]
-)
-
-colnames(records) <- NULL
-
 # check if anno_file already exist
 anno_file <- paste(dir_name, "/annoFile.txt", sep = "")
 if (file.exists(anno_file)) {
@@ -349,7 +338,7 @@ chrom_matrix <-
 chrom_matrix <- unique(chrom_matrix)
 chrom_matrix$V2 <- NULL
 
-# extracting the annotation data containing id, chr, positions 
+# extracting the annotation data containing id, chr, positions
 # and adding link to existing reference SNPs or clinical significance Clinvar reference
 invisible(foreach (row_count = 1:nrow(records), .packages = 'filelock') %dopar% {
   line <- c()
