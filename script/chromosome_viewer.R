@@ -9,6 +9,12 @@ if (!dir.exists(Sys.getenv("R_LIBS_USER")))
 # add to the path
 .libPaths(Sys.getenv("R_LIBS_USER"))
 
+## Default repo for CRAN mirror
+local({r <- getOption("repos")
+r["CRAN"] <- "http://cran.r-project.org" 
+options(repos=r)
+})
+
 # automatic install of packages if they are not installed already
 list.of.packages <- c(
   "vcfR",
@@ -177,7 +183,7 @@ if (!is.null(opt$chromosome)) {
     else {
       chrom_record <- records[records[, 1] == chrom,]
     }
-
+    
     buff_record <- rbind(buff_record, chrom_record)
   }
   
@@ -383,7 +389,7 @@ invisible(foreach (row_count = 1:nrow(records), .packages = 'filelock') %dopar% 
           collapse = "\t")
   
   # writing to file with simple lock for concurrency
-  lck <- lock("/tmp/anno_file.lock")
+  lck <- lock(paste(c(dir_name, "/anno_file.lock"), collapse=""))
   write(line,
         anno_file, append = TRUE)
   unlock(lck)
@@ -405,15 +411,15 @@ if (!all(sapply(
     paste(dir_name, "/annoFile.txt", sep = ""),
     hlinks = T
   ) else
-  chrom_map <- chromoMap(
-    title = basename(input_file),
-    paste(dir_name, "/chromFile.txt", sep = ""),
-    paste(dir_name, "/annoFile.txt", sep = ""),
-    hlinks = T,
-    data_based_color_map = TRUE,
-    data_type = c("categorical"),
-    legend = TRUE
-  )
+    chrom_map <- chromoMap(
+      title = basename(input_file),
+      paste(dir_name, "/chromFile.txt", sep = ""),
+      paste(dir_name, "/annoFile.txt", sep = ""),
+      hlinks = T,
+      data_based_color_map = TRUE,
+      data_type = c("categorical"),
+      legend = TRUE
+    )
 
 # exporting the graph to a html file
 save_html(
