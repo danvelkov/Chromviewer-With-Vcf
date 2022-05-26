@@ -1,9 +1,9 @@
 #!/bin/bash
-#askpass configuration
-#if error occur, please read README.md
-export SUDO_ASKPASS=/usr/bin/ssh-askpass
-
 if [[ "$OSTYPE" =~ ^linux ]]; then
+  #askpass configuration
+  #if error occur, please read README.md
+  export SUDO_ASKPASS=/usr/bin/ssh-askpass
+
   #start directory variable
   STDIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
   
@@ -18,13 +18,16 @@ if [[ "$OSTYPE" =~ ^linux ]]; then
     sudo -A apt -y install build-essential;
   fi
 
+  #changing back to start directory
+  cd $STDIR
 fi
 
 #call to check Rscript
 Rscript --version
 
-#changing back to start directory
-cd $STDIR
+
+
+sleep 5
 
 #call Rscript with input flags
 Rscript ./script/chromosome_viewer.R "$@"
