@@ -271,6 +271,10 @@ if (!is.null(opt$filter)) {
   records <- records[grepl("PASS", records[, 7]), ]
 }
 
+# check if there are any records
+if (nrow(records) == 0)
+  stop("No elements to show", call. = FALSE)
+
 colnames(records) <- NULL
 
 # extracting chromosome lengths by the contig tag in the vcf file
@@ -343,10 +347,6 @@ chrom_matrix <-
   read.table(paste(dir_name, "/chromFile.txt", sep = ""))
 chrom_matrix <- unique(chrom_matrix)
 chrom_matrix$V2 <- NULL
-
-# check if there are any records
-if (nrow(records) == 0)
-  stop("No elements to show", call. = FALSE)
 
 # extracting the annotation data containing id, chr, positions
 # and adding link to existing reference SNPs or clinical significance Clinvar reference
