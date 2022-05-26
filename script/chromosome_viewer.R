@@ -268,7 +268,7 @@ if (is.null(dim(records))) {
 
 # check for --filter option which filters FILTER field with value PASS for variants
 if (!is.null(opt$filter)) {
-  records <- records[records[, 7] == "PASS", ]
+  records <- records[grepl("PASS", records[, 7]), ]
 }
 
 colnames(records) <- NULL
@@ -276,7 +276,7 @@ colnames(records) <- NULL
 # extracting chromosome lengths by the contig tag in the vcf file
 # https://www.ncbi.nlm.nih.gov/grc/human/data
 chrom_list <- queryMETA(vcf, element = "contig")
-variant_chroms <- unique(getCHROM(vcf))
+variant_chroms <- unique(records[, 1])
 
 # generating chrom length file
 # check if contig with lengths is present
@@ -343,6 +343,10 @@ chrom_matrix <-
   read.table(paste(dir_name, "/chromFile.txt", sep = ""))
 chrom_matrix <- unique(chrom_matrix)
 chrom_matrix$V2 <- NULL
+
+# check if there are any records
+if (nrow(records) == 0)
+  stop("No elements to show", call. = FALSE)
 
 # extracting the annotation data containing id, chr, positions
 # and adding link to existing reference SNPs or clinical significance Clinvar reference
