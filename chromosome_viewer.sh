@@ -25,9 +25,7 @@ fi
 #call to check Rscript
 Rscript --version
 
-
-
-sleep 5
-
 #call Rscript with input flags
 Rscript ./script/chromosome_viewer.R "$@"
+
+sleep 5
